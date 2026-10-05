@@ -346,27 +346,20 @@ class RealScout:
         return 0
 
     @staticmethod
-    def classify_quota_status(nationality, league_label):
+    def classify_quota_status(nationality, league_label=None):
         """
-        Klasifikasi status kuota pemain berdasarkan kewarganegaraan:
-        - Lokal (WNI untuk Liga Indonesia, atau warga negara domestik liga terkait)
-        - ASEAN
-        - Asia (AFC)
-        - Asing Non-Asia
+        Klasifikasi status kuota pemain berdasarkan Regulasi Liga Indonesia (PSSI / LIB):
+        - Lokal: Warga Negara Indonesia (WNI), baik yang bermain di Liga 1/2/3 maupun abroad
+        - ASEAN: Pemain Asia Tenggara non-Indonesia (Thailand, Malaysia, Vietnam, Singapura, Filipina, dll.)
+        - Asia (AFC): Pemain konfederasi Asia non-ASEAN (Jepang, Korsel, Australia, Uzbekistan, Iran, dll.)
+        - Asing Non-Asia: Pemain Eropa, Amerika Latin, Afrika, dll.
         """
         if not nationality or nationality == "Unknown":
             return "Lokal"
 
         nat_clean = nationality.strip()
-        if "Indonesia" in league_label and nat_clean == "Indonesia":
+        if nat_clean == "Indonesia":
             return "Lokal"
-        if league_label == "Thailand" and nat_clean == "Thailand":
-            return "Lokal"
-        if league_label == "Malaysia" and nat_clean == "Malaysia":
-            return "Lokal"
-        if league_label == "Vietnam" and nat_clean == "Vietnam":
-            return "Lokal"
-
         if nat_clean in ASEAN_COUNTRIES:
             return "ASEAN"
         if nat_clean in AFC_COUNTRIES:

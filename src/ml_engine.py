@@ -86,6 +86,7 @@ class ScoutBrain:
             (candidates['market_value_est'] <= max_budget)
         ].copy()
         
-        filtered_candidates['scout_score'] = (filtered_candidates['market_value_est'] / filtered_candidates['age'])
+        safe_age = filtered_candidates['age'].replace(0, 25)
+        filtered_candidates['scout_score'] = (filtered_candidates['market_value_est'] / safe_age)
         
         return filtered_candidates.nlargest(top_n, 'scout_score')[['player_name', 'team', 'league', 'age', 'market_value_raw']]

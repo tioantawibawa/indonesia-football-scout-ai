@@ -7,6 +7,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from src.ml_engine import ScoutBrain
+from src.club_analytics import ClubAnalytics
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(
@@ -63,14 +64,14 @@ st.markdown(
     [data-testid="stMetricDelta"] {
         font-size: 0.72rem !important;
     }
-    /* Buat Tab Menu lebih rapat agar semua 6 tab muat tanpa scroll horizontal */
+    /* Buat Tab Menu lebih rapat agar seluruh 7 tab muat tanpa scroll horizontal */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 6px !important;
+        gap: 4px !important;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 38px !important;
-        padding: 4px 12px !important;
-        font-size: 0.85rem !important;
+        height: 36px !important;
+        padding: 3px 10px !important;
+        font-size: 0.82rem !important;
         font-weight: 600 !important;
     }
     /* Rapatkan jarak antar widget di Sidebar */
@@ -81,6 +82,16 @@ st.markdown(
         margin-top: 0.75rem !important;
         margin-bottom: 0.75rem !important;
     }
+    /* Form Badges Styling */
+    .badge-win {
+        background-color: #28a745; color: white; padding: 2px 7px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; margin-right: 3px;
+    }
+    .badge-draw {
+        background-color: #ffc107; color: black; padding: 2px 7px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; margin-right: 3px;
+    }
+    .badge-loss {
+        background-color: #dc3545; color: white; padding: 2px 7px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; margin-right: 3px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -90,12 +101,12 @@ st.markdown(
 st.title("🇮🇩 Garuda Scout AI v6.0")
 st.caption(
     "Pro Football Scouting & Intelligence Suite — Liga 1, Liga 2, Liga 3 & ASEAN | "
-    "Multi-Attribute ML, Moneyball Valuation & Regulasi PSSI/LIB"
+    "Multi-Attribute ML, Moneyball Valuation, Match Analytics & Regulasi PSSI/LIB"
 )
 
 
 # --- LOAD DATA & ML ENGINE (CACHED) ---
-@st.cache_resource(show_spinner="Memuat database 3.000+ pemain & melatih model ML...")
+@st.cache_resource(show_spinner="Memuat database 3.000+ pemain & statistik 104 klub...")
 def load_scout_brain():
     return ScoutBrain()
 
@@ -103,6 +114,7 @@ def load_scout_brain():
 try:
     brain = load_scout_brain()
     df = brain.df
+    club_engine = brain.club_analytics
 except Exception as e:
     st.error(f"Gagal memuat data: {e}")
     st.stop()
@@ -125,9 +137,7 @@ def format_idr(val):
 
 def generate_ai_scouting_report(player_row, radar_info, similar_df, api_key=None):
     """
-    Menghasilkan Executive Scouting Report.
-    - Jika GEMINI_API_KEY tersedia, memanggil model gemini-3.8-flash.
-    - Jika tidak tersedia, menghasilkan laporan analitik terstruktur berbasis metrik ML ScoutBrain.
+    Menghasilkan Executive Scouting Report untuk pemain individu.
     """
     p_name = player_row["player_name"]
     p_team = player_row["team"]
@@ -309,10 +319,11 @@ with st.sidebar.expander("🔑 Gemini AI Key (Opsional)"):
     )
 
 # ==========================================
-# 📑 TABS MENU (RINGKAS AGAR MUAT 1 BARIS)
+# 📑 TABS MENU (7 TABS LENGKAP & COMPACT)
 # ==========================================
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📊 Pasar & Tren",
+    "🏟️ Analisis Klub & Taktik",
     "🤖 Squad Planner",
     "🔄 Cari Pengganti",
     "🕸️ Radar & AI Scout",
@@ -486,9 +497,235 @@ with tab1:
         st.warning("Data kosong. Silakan sesuaikan filter di Sidebar.")
 
 # ==========================================
-# TAB 2: SMART SQUAD PLANNER & REGULASI
+# TAB 2: ANALISIS PERTANDINGAN & DIAGNOSIS KLUB
 # ==========================================
 with tab2:
+    st.markdown("#### 🏟️ Analisis Statistik Pertandingan & Diagnosis Sektor Klub")
+    st.caption(
+        "Evaluasi mendalam rekam laga, rasio gol, ketahanan bertahan, dan diagnosis 5 sektor kunci klub "
+        "disertai rekomendasi perbaikan taktis dan target rekrutmen konkret dari database 3.060 pemain."
+    )
+
+    # 1. Pilihan Liga & Klub Target
+    col_sel_lg, col_sel_tm = st.columns([1.2, 2.0])
+    with col_sel_lg:
+        avail_standings_leagues = sorted(club_engine.df_clubs["league"].unique()) if not club_engine.df_clubs.empty else all_leagues
+        sel_club_league = st.selectbox(
+            "1. Pilih Kompetisi",
+            options=avail_standings_leagues,
+            index=0,
+            key="t2_club_league",
+        )
+    with col_sel_tm:
+        clubs_in_lg = sorted(club_engine.df_clubs[club_engine.df_clubs["league"] == sel_club_league]["team"].unique()) if not club_engine.df_clubs.empty else sorted(df[df["league"] == sel_club_league]["team"].unique())
+        sel_target_club = st.selectbox(
+            "2. Pilih Klub yang Akan Dianalisis",
+            options=clubs_in_lg,
+            index=0,
+            key="t2_target_club",
+        )
+
+    # Ambil data pertandingan & skuad
+    m_info = club_engine.get_club_match_stats(sel_target_club)
+    s_info = club_engine.get_club_squad_profile(sel_target_club)
+    diag_info = club_engine.evaluate_sectors(sel_target_club)
+
+    if m_info and s_info and diag_info:
+        # Header Klub: Logo, Peringkat, Rekor, Form
+        col_c_crest, col_c_meta, col_c_form = st.columns([0.6, 2.4, 2.0])
+        with col_c_crest:
+            crest_url = m_info.get("crest_url")
+            if crest_url and str(crest_url).startswith("http"):
+                st.image(crest_url, width=65)
+            else:
+                st.markdown("### 🛡️")
+        with col_c_meta:
+            st.markdown(f"### {sel_target_club}")
+            st.caption(
+                f"**Kompetisi:** {m_info['league']} | **Peringkat:** #{m_info['rank']} ({m_info.get('group', 'Utama')}) | "
+                f"**Nilai Skuad:** {format_idr(s_info['total_mv'])} ({s_info['squad_size']} Pemain)"
+            )
+        with col_c_form:
+            st.write("**Tren Form Terakhir:**")
+            form_str = str(m_info.get("form", "-"))
+            badges_html = ""
+            for ch in form_str:
+                if ch == "W":
+                    badges_html += '<span class="badge-win">W</span>'
+                elif ch == "D":
+                    badges_html += '<span class="badge-draw">D</span>'
+                elif ch == "L":
+                    badges_html += '<span class="badge-loss">L</span>'
+                else:
+                    badges_html += f"<span>{ch}</span>"
+            if badges_html:
+                st.markdown(badges_html, unsafe_allow_html=True)
+            else:
+                st.write("-")
+
+        # Row 1: KPI Pertandingan Klub
+        cm1, cm2, cm3, cm4, cm5 = st.columns(5)
+        p_val = m_info["played"]
+        w_val, d_val, l_val = m_info["won"], m_info["drawn"], m_info["lost"]
+        pts_val = m_info["points"]
+        ppg_val = m_info["ppg"]
+        gf_val, ga_val, gd_val = m_info["gf"], m_info["ga"], m_info["gd"]
+        gf_m = m_info["gf_per_match"]
+        ga_m = m_info["ga_per_match"]
+        cs_count = m_info.get("clean_sheets", 0)
+
+        cm1.metric("Poin & Ranking", f"{pts_val} Pts", f"Rank #{m_info['rank']} (PPG {ppg_val})")
+        cm2.metric("Rekam Laga", f"{p_val} Main", f"{w_val}M - {d_val}S - {l_val}K")
+        cm3.metric("Produktivitas Gol", f"{gf_val} Gol", f"{gf_m:.2f} Gol/Laga")
+        cm4.metric("Kemasukan & Nirbobol", f"{ga_val} Gol", f"{ga_m:.2f}/laga ({cs_count} Clean Sheets)")
+        cm5.metric("Selisih Gol (GD)", f"{gd_val:+d}", f"Win Rate {m_info.get('win_rate', 0)}%")
+
+        # Expandable Klasemen Lengkap Liga
+        with st.expander(f"📋 Lihat Klasemen Lengkap {sel_club_league}"):
+            df_standings_display = club_engine.get_standings(league=sel_club_league)
+            if not df_standings_display.empty:
+                st.dataframe(
+                    df_standings_display[[
+                        "rank", "team", "group", "played", "won", "drawn", "lost",
+                        "gf", "ga", "gd", "points", "ppg", "win_rate", "form",
+                    ]].rename(
+                        columns={
+                            "rank": "#", "team": "Klub", "group": "Grup", "played": "Main",
+                            "won": "M", "drawn": "S", "lost": "K", "gf": "GM", "ga": "GK",
+                            "gd": "SG", "points": "Poin", "ppg": "PPG", "win_rate": "Win%", "form": "Form",
+                        }
+                    ),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+        st.markdown("---")
+        # Row 2: Evaluasi 5 Sektor Lapangan (Radar Chart & Kartu Status Sektor)
+        col_sec_rad, col_sec_cards = st.columns([1.15, 1.35])
+
+        with col_sec_rad:
+            st.markdown("##### 🕸️ Radar Keseimbangan 5 Sektor Klub")
+            sec_dict = diag_info["sectors"]
+            radar_cats = list(sec_dict.keys())
+            club_scores = [sec_dict[k]["score"] for k in radar_cats]
+
+            # Tutup poligon radar
+            radar_cats_closed = radar_cats + [radar_cats[0]]
+            club_scores_closed = club_scores + [club_scores[0]]
+            benchmark_closed = [75.0] * (len(radar_cats) + 1)
+
+            fig_sec_radar = go.Figure()
+            fig_sec_radar.add_trace(
+                go.Scatterpolar(
+                    r=club_scores_closed,
+                    theta=radar_cats_closed,
+                    fill="toself",
+                    name=sel_target_club,
+                    line=dict(color="#00CC96", width=2.5),
+                    opacity=0.75,
+                )
+            )
+            fig_sec_radar.add_trace(
+                go.Scatterpolar(
+                    r=benchmark_closed,
+                    theta=radar_cats_closed,
+                    name="Standar Solid (75%)",
+                    line=dict(color="rgba(255, 165, 0, 0.7)", width=1.5, dash="dash"),
+                )
+            )
+            fig_sec_radar.update_layout(
+                polar=dict(radialaxis=dict(visible=True, range=[20, 100], ticksuffix="%")),
+                height=340,
+                margin=dict(l=25, r=25, t=15, b=25),
+                legend=dict(orientation="h", yanchor="bottom", y=-0.22, xanchor="center", x=0.5),
+            )
+            st.plotly_chart(fig_sec_radar, use_container_width=True)
+            st.caption(f"⚡ **Overall Sector Health Index:** **{diag_info['overall_health_score']}/100**")
+
+        with col_sec_cards:
+            st.markdown("##### 🩺 Rapor Kesehatan 5 Sektor Kunci")
+            for sec_k, sec_v in sec_dict.items():
+                col_c1, col_c2 = st.columns([1.8, 1])
+                with col_c1:
+                    st.write(f"**{sec_v['name']}**: {sec_v['status']} (Skor: **{sec_v['score']:.1f}**)")
+                    st.caption(f"💬 *{sec_v['diagnosis']}*")
+                with col_c2:
+                    # Ringkasan metrik kunci
+                    km = sec_v.get("key_metrics", {})
+                    km_txt = " | ".join([f"{k}: {v}" for k, v in list(km.items())[:2]])
+                    st.caption(km_txt)
+                st.markdown("<hr style='margin: 4px 0 !important;'>", unsafe_allow_html=True)
+
+        st.markdown("---")
+        # Row 3: Rekomendasi Solusi & Rekrutmen Spesifik untuk Sektor yang Perlu Diperbaiki
+        st.markdown("#### 🚨 Diagnosis Sektor Prioritas & Rekomendasi Target Rekrutmen")
+        st.write(
+            f"Berdasarkan evaluasi statistik pertandingan dan kedalaman skuad {sel_target_club}, "
+            "berikut adalah sektor yang paling mendesak untuk dibenahi serta rekomendasi pemain rekrutan terbaik:"
+        )
+
+        recs_list = club_engine.get_actionable_recommendations(sel_target_club)
+        for idx, rec in enumerate(recs_list, 1):
+            with st.container():
+                st.markdown(
+                    f"##### Sektor Prioritas #{idx}: {rec['sector_name']} "
+                    f"*(Skor: {rec['score']} | Status: {rec['status']})*"
+                )
+                st.info(f"**Problem Utama:** {rec['diagnosis']}\n\n**Solusi Taktikal:** {rec['tactical_profile']}")
+
+                cand_df = rec.get("candidates")
+                if cand_df is not None and not cand_df.empty:
+                    st.write("**🎯 Rekomendasi Target Pemain yang Cocok untuk Ditransfer/Dipinjam:**")
+                    st.dataframe(
+                        cand_df.rename(
+                            columns={
+                                "player_name": "Nama Pemain",
+                                "team": "Klub Asal",
+                                "league": "Liga",
+                                "position": "Posisi",
+                                "age": "Usia",
+                                "height_cm": "Tinggi",
+                                "foot": "Kaki",
+                                "quota_status": "Kuota",
+                                "market_value_raw": "Valuasi",
+                                "contract_expiry": "Kontrak Habis",
+                            }
+                        ),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+                else:
+                    st.write("Tidak ada kandidat pemain yang cocok dalam batasan budget normal.")
+
+        st.markdown("---")
+        # Row 4: AI Executive Tactical Report Generator
+        st.markdown("##### 📋 AI Executive Tactical & Club Diagnostic Report")
+        c_diag_btn, c_diag_note = st.columns([1.5, 2.5])
+        with c_diag_btn:
+            gen_club_report = st.button(
+                "📝 Buat Laporan Diagnostik Taktikal Klub",
+                type="primary",
+                use_container_width=True,
+                key="btn_club_report",
+            )
+        with c_diag_note:
+            st.caption("Menghasilkan laporan dewan direksi/kepala pelatih mencakup analisis taktik, titik lemah, dan rencana aksi transfer.")
+
+        if gen_club_report:
+            with st.spinner(f"Menyusun laporan diagnostik taktikal untuk {sel_target_club}..."):
+                rep_md, engine_name = club_engine.generate_club_diagnostic_report(
+                    sel_target_club, api_key=gemini_api_key
+                )
+            st.caption(f"⚡ Dihasilkan oleh: **{engine_name}**")
+            st.markdown(rep_md)
+
+    else:
+        st.warning("Data pertandingan klub ini sedang dipersiapkan atau belum tersedia.")
+
+# ==========================================
+# TAB 3: SMART SQUAD PLANNER & REGULASI
+# ==========================================
+with tab3:
     st.markdown("#### 🤖 Smart Squad Planner & Filter Regulasi PSSI/LIB")
 
     c_p1, c_p2, c_p3, c_p4, c_p5, c_p6 = st.columns([1.3, 1.2, 1.4, 1.0, 0.9, 1.0])
@@ -496,13 +733,13 @@ with tab2:
         target_team_planner = st.selectbox(
             "Klub Target",
             options=sorted(df["team"].unique()),
-            key="t2_team",
+            key="t3_team",
         )
     with c_p2:
         target_pos_planner = st.selectbox(
             "Posisi Dibutuhkan",
             options=sorted(df["position"].unique()),
-            key="t2_pos",
+            key="t3_pos",
         )
     with c_p3:
         strategy_map = {
@@ -514,20 +751,20 @@ with tab2:
         sel_strategy_label = st.selectbox(
             "Strategi Transfer",
             options=list(strategy_map.keys()),
-            key="t2_strategy",
+            key="t3_strategy",
         )
         sel_strategy = strategy_map[sel_strategy_label]
     with c_p4:
         sel_quota_planner = st.selectbox(
             "Kuota Regulasi",
             options=["Semua", "Lokal", "ASEAN", "Asia (AFC)", "Asing Non-Asia"],
-            key="t2_quota",
+            key="t3_quota",
         )
     with c_p5:
         sel_foot_planner = st.selectbox(
             "Kaki Dominan",
             options=["Semua", "kanan", "kiri", "keduanya"],
-            key="t2_foot",
+            key="t3_foot",
         )
     with c_p6:
         custom_budget_m = st.number_input(
@@ -536,7 +773,7 @@ with tab2:
             max_value=50.0,
             value=0.0,
             step=0.5,
-            key="t2_budget",
+            key="t3_budget",
             help="0 = Otomatis menyesuaikan rata-rata skuad klub",
         )
 
@@ -545,7 +782,7 @@ with tab2:
         u22_only_planner = st.checkbox(
             "👶 Wajib U-22 (≤ 22 Thn)",
             value=False,
-            key="t2_u22",
+            key="t3_u22",
         )
     with c_act2:
         club_df = df[df["team"] == target_team_planner]
@@ -605,60 +842,60 @@ with tab2:
             st.warning("Tidak ditemukan kandidat yang cocok. Coba longgarkan filter Kuota/Kaki/Budget.")
 
 # ==========================================
-# TAB 3: MULTI-ATTRIBUTE REPLACEMENT FINDER
+# TAB 4: MULTI-ATTRIBUTE REPLACEMENT FINDER
 # ==========================================
-with tab3:
+with tab4:
     st.markdown("#### 🔄 Multi-Attribute Replacement Finder (8D Similarity)")
 
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     with col_f1:
         leagues_list = sorted(df["league"].unique())
-        sel_league_t3 = st.selectbox("1. Liga Target", options=leagues_list, key="t3_league")
+        sel_league_t4 = st.selectbox("1. Liga Target", options=leagues_list, key="t4_league")
     with col_f2:
-        teams_in_league = sorted(df[df["league"] == sel_league_t3]["team"].unique())
-        sel_team_t3 = st.selectbox("2. Klub", options=teams_in_league, key="t3_team")
+        teams_in_league = sorted(df[df["league"] == sel_league_t4]["team"].unique())
+        sel_team_t4 = st.selectbox("2. Klub", options=teams_in_league, key="t4_team")
     with col_f3:
         pos_in_team = sorted(
-            df[(df["league"] == sel_league_t3) & (df["team"] == sel_team_t3)]["position"].unique()
+            df[(df["league"] == sel_league_t4) & (df["team"] == sel_team_t4)]["position"].unique()
         )
-        sel_pos_t3 = st.selectbox("3. Posisi", options=pos_in_team, key="t3_pos")
+        sel_pos_t4 = st.selectbox("3. Posisi", options=pos_in_team, key="t4_pos")
     with col_f4:
         players_final = sorted(
             df[
-                (df["league"] == sel_league_t3)
-                & (df["team"] == sel_team_t3)
-                & (df["position"] == sel_pos_t3)
+                (df["league"] == sel_league_t4)
+                & (df["team"] == sel_team_t4)
+                & (df["position"] == sel_pos_t4)
             ]["player_name"].unique()
         )
-        sel_player_t3 = st.selectbox("4. Pemain Target", options=players_final, key="t3_player")
+        sel_player_t4 = st.selectbox("4. Pemain Target", options=players_final, key="t4_player")
 
     cf1, cf2, cf3, cf4, cf5 = st.columns([1.1, 1.1, 1.1, 1.8, 1.1])
     with cf1:
-        same_foot_t3 = st.checkbox("🦶 Kaki Sama", value=False, key="t3_same_foot")
+        same_foot_t4 = st.checkbox("🦶 Kaki Sama", value=False, key="t4_same_foot")
     with cf2:
-        quota_t3 = st.selectbox(
+        quota_t4 = st.selectbox(
             "Filter Kuota",
             options=["Semua", "Lokal", "ASEAN", "Asia (AFC)", "Asing Non-Asia"],
-            key="t3_quota",
+            key="t4_quota",
             label_visibility="collapsed",
         )
     with cf3:
-        max_budget_t3_m = st.number_input(
+        max_budget_t4_m = st.number_input(
             "Maks Budget (M)",
             min_value=0.0,
             max_value=50.0,
             value=0.0,
             step=0.5,
-            key="t3_max_budget",
+            key="t4_max_budget",
             label_visibility="collapsed",
             help="Maksimal Valuasi dalam Miliar Rp (0 = Tanpa Batas)",
         )
     with cf4:
-        target_leagues_t3 = st.multiselect(
+        target_leagues_t4 = st.multiselect(
             "Filter Liga Pencarian",
             options=leagues_list,
             default=leagues_list,
-            key="t3_target_leagues",
+            key="t4_target_leagues",
             label_visibility="collapsed",
         )
     with cf5:
@@ -669,7 +906,7 @@ with tab3:
             key="btn_replace",
         )
 
-    target_info = df[df["player_name"] == sel_player_t3].iloc[0]
+    target_info = df[df["player_name"] == sel_player_t4].iloc[0]
     st.caption(
         f"🎯 **Profil {target_info['player_name']}**: "
         f"Usia **{int(target_info['age'])} thn** | Tinggi **{int(target_info['height_cm'])} cm** | "
@@ -678,14 +915,14 @@ with tab3:
     )
 
     if run_replace:
-        budget_limit = max_budget_t3_m * 1e9 if max_budget_t3_m > 0 else None
+        budget_limit = max_budget_t4_m * 1e9 if max_budget_t4_m > 0 else None
         similar_players = brain.get_similar_players(
-            player_name=sel_player_t3,
+            player_name=sel_player_t4,
             top_n=12,
-            same_foot_only=same_foot_t3,
-            quota_filter=quota_t3,
+            same_foot_only=same_foot_t4,
+            quota_filter=quota_t4,
             max_budget=budget_limit,
-            target_leagues=target_leagues_t3 if target_leagues_t3 else None,
+            target_leagues=target_leagues_t4 if target_leagues_t4 else None,
         )
         if similar_players is not None and not similar_players.empty:
             st.dataframe(
@@ -711,9 +948,9 @@ with tab3:
             st.warning("Tidak ditemukan pemain pengganti yang sesuai dengan filter di atas.")
 
 # ==========================================
-# TAB 4: HEAD-TO-HEAD RADAR & AI SCOUT REPORT
+# TAB 5: HEAD-TO-HEAD RADAR & AI SCOUT REPORT
 # ==========================================
-with tab4:
+with tab5:
     st.markdown("#### 🕸️ Head-to-Head 6D Radar & AI Executive Scouting Report")
 
     all_player_names = sorted(df["player_name"].unique())
@@ -729,7 +966,7 @@ with tab4:
         options=all_player_names,
         default=default_h2h,
         max_selections=4,
-        key="t4_players",
+        key="t5_players",
     )
 
     if selected_h2h:
@@ -800,7 +1037,7 @@ with tab4:
                 report_target_player = st.selectbox(
                     "Target Laporan AI:",
                     options=selected_h2h,
-                    key="t4_report_target",
+                    key="t5_report_target",
                     label_visibility="collapsed",
                 )
             with c_rep_btn:
@@ -828,9 +1065,9 @@ with tab4:
         st.info("Pilih minimal 1 pemain di atas untuk menampilkan Radar Chart & AI Scouting Report.")
 
 # ==========================================
-# TAB 5: UNDERVALUED GEMS & CONTRACT RADAR
+# TAB 6: UNDERVALUED GEMS & CONTRACT RADAR
 # ==========================================
-with tab5:
+with tab6:
     sub_gem, sub_bosman = st.tabs([
         "🚀 Undervalued & Liga 2/3 Promotion Gems",
         "⏳ Contract Expiry / Bosman Radar",
@@ -847,13 +1084,13 @@ with tab5:
                 "Kompetisi",
                 options=all_leagues,
                 default=default_gem_leagues if default_gem_leagues else all_leagues,
-                key="t5_gem_leagues",
+                key="t6_gem_leagues",
             )
         with cg2:
             gem_pos = st.selectbox(
                 "Posisi",
                 options=["Semua"] + sorted(df["position"].unique()),
-                key="t5_gem_pos",
+                key="t6_gem_pos",
             )
         with cg3:
             gem_max_age = st.slider(
@@ -861,14 +1098,14 @@ with tab5:
                 min_value=17,
                 max_value=32,
                 value=24,
-                key="t5_gem_age",
+                key="t6_gem_age",
             )
         with cg4:
-            gem_top_n = st.number_input("Top N", min_value=5, max_value=50, value=20, key="t5_gem_n")
+            gem_top_n = st.number_input("Top N", min_value=5, max_value=50, value=20, key="t6_gem_n")
         with cg5:
             st.write("")
             st.write("")
-            gem_u22 = st.checkbox("👶 U-22", value=False, key="t5_gem_u22")
+            gem_u22 = st.checkbox("👶 U-22", value=False, key="t6_gem_u22")
 
         gems_df = brain.find_undervalued_gems(
             league_filter=gem_leagues if gem_leagues else None,
@@ -911,25 +1148,25 @@ with tab5:
                 max_value=24,
                 value=12,
                 step=3,
-                key="t5_bos_months",
+                key="t6_bos_months",
             )
         with cb2:
             bos_league = st.selectbox(
                 "Kompetisi",
                 options=["Semua"] + all_leagues,
-                key="t5_bos_league",
+                key="t6_bos_league",
             )
         with cb3:
             bos_pos = st.selectbox(
                 "Posisi",
                 options=["Semua"] + sorted(df["position"].unique()),
-                key="t5_bos_pos",
+                key="t6_bos_pos",
             )
         with cb4:
             bos_quota = st.selectbox(
                 "Kuota Regulasi",
                 options=["Semua", "Lokal", "ASEAN", "Asia (AFC)", "Asing Non-Asia"],
-                key="t5_bos_quota",
+                key="t6_bos_quota",
             )
 
         exp_df = brain.get_expiring_contracts(
@@ -960,9 +1197,9 @@ with tab5:
             st.info("Tidak ditemukan pemain dengan kontrak yang segera habis pada filter ini.")
 
 # ==========================================
-# TAB 6: CONTENT CREATOR & DATABASE
+# TAB 7: CONTENT CREATOR & DATABASE
 # ==========================================
-with tab6:
+with tab7:
     sub_db, sub_content = st.tabs([
         f"📝 Master Database ({len(main_df):,} Pemain)",
         "📱 Content Creator Studio",
@@ -1052,12 +1289,12 @@ with tab6:
             target_league_content = st.selectbox(
                 "Liga Target Konten",
                 options=sorted(df["league"].unique()),
-                key="t6_league",
+                key="t7_league",
             )
             criteria = st.radio(
                 "Tipe Konten",
                 ["💎 Wonderkid (≤ 22 Thn)", "🚀 Moneyball Gem", "🛡️ Senior Leader (≥ 30 Thn)"],
-                key="t6_crit",
+                key="t7_crit",
             )
             generate_btn = st.button(
                 "🎲 Generate Player to Watch",

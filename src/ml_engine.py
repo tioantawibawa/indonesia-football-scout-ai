@@ -11,6 +11,8 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 from sklearn.preprocessing import StandardScaler
 
+from src.club_analytics import ClubAnalytics
+
 
 INDONESIAN_MONTHS = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "mei": 5, "may": 5,
@@ -33,6 +35,7 @@ class ScoutBrain:
 
         self._prepare_features()
         self._fit_role_clusters_and_valuation_model()
+        self.club_analytics = ClubAnalytics(player_db_path=data_path)
 
     # =========================================================================
     # 1. FEATURE ENGINEERING & PREPROCESSING
